@@ -2,7 +2,7 @@
 
 from typing import Optional
 import asyncio
-from wikisearch_agent.util import fetch_api_keys, setup_logging
+from wikisearch_agent.util import fetch_api_keys, setup_logging, prompt_template_from_file
 from dataclasses import asdict
 import langsmith
 from langchain_openai import ChatOpenAI
@@ -51,18 +51,13 @@ class App:
                         tools = await load_mcp_tools(w_session)
                         self.logger.debug('Got tools', tools=tools)
                         context = {
-                            'query': 'Mark Twain'
+                            'person': 'Mark Twain'
                         }
-                        prompt = ChatPromptTemplate.from_messages(
-                            [
-                                ('system', 'You are a helpful research librarian with a sense of humor.'),
-                                ('user', 'Ask Wikipedia: what is the birth name of {query}?')
-                            ]
-                        )
+                        name_agent_prompt_templ = prompt_template_from_file(Path(__file__).parent.parent.parent / 'prompts/name_extractor_agent.yaml')
                         # chain = prompt | self.llm.bind_tools(tools=tools) | JsonOutputParser()
                         # response = await chain.ainvoke(context)
                         agent = create_react_agent(model=self.llm, tools=tools)
-                        chain = prompt | agent
+                        chain = name_agent_prompt_templ | agent
                         response = await chain.ainvoke(context)
                         self.logger.info('OpenAI query', response=response['messages'][-1].content)
         except Exception as e:

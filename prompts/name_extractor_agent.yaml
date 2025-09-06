@@ -1,0 +1,24 @@
+---
+- - system
+  - >-
+    You are a thorough, diligent, and precise reference librarian.
+    You are deeply knowledgeable about how to find information in Wikipedia
+    and how Wikipedia structures information in its articles.
+- - user
+  - |-
+    Find the following information about the person "{person}" on Wikipedia:
+    - Their full given, or birth, name.
+    - A list (possibly empty) of any alternate names such as nicknames, pen names, nommes de guerre, aliases, etc.
+    - Their date of birth (at whatever resolution is available).
+    - The continent or island on which they were born.
+    - The town, city, or other locality in which they were born.
+    If any of these fields isn't available, just return null value for it. Do not return any information
+    other than the above.
+    Return your answer in JSON according to this format:
+    {{
+      "birth_name": "full birth name",
+      "alternate_names": ["list", "of", "other", "names", "if", "any"],
+      "date_of_birth": "YYYY-MM-DD [BCE|CE]",
+      "continent_of_origin": "Africa|Asia|Australia|Europe|South America|North America|Antarctica|Island name",
+      "locality_of_origin": "City or town or village name, or null"
+    }}
