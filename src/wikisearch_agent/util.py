@@ -7,10 +7,14 @@ import logging.config
 from pathlib import Path
 import os
 import sys
+from dataclasses import dataclass
+from typing import Optional
+
 
 __all__ = [
     'setup_logging',
     'fetch_api_keys',
+    'ApplicationSecrets',
 ]
 
 
@@ -36,6 +40,7 @@ def setup_logging(loglevel: str = 'INFO',
     """
     # Suppress asyncio 'KqueueSelector' messages.
     logging.getLogger('asyncio').setLevel(logging.WARNING)
+    logging.getLogger('keyring').setLevel(logging.WARNING)
     # Ensure logdir exists
     logdir.mkdir(parents=True, exist_ok=True)
     structlog.configure(
@@ -92,17 +97,26 @@ def setup_logging(loglevel: str = 'INFO',
     })
     return structlog.get_logger(__name__)
 
+@dataclass
+class ApplicationSecrets:
+    """Container for secrets maintained in a central secrets store like AWS Secrets Manager or Apple Keychain."""
+    langsmith_api: Optional[str] = None
+    openai_api: Optional[str] = None
+    openai_project_id: Optional[str] = None
 
-def fetch_api_keys() -> dict[str, str]:
-    """Fetch the API key for Hugging Face from the system's keyring.
 
-    Currently, it retrieves the Hugging Face access token.
+def fetch_api_keys() -> ApplicationSecrets:
+    """Fetch a set of API keys from the system's keyring.
+
+    This pulls a set of keys that the agent will need from the local keyring, returning the ones
+    it finds in an ApplicationSecrets object; non-existent or permission denied keys are returned as None.
 
     Returns:
-        dict[str, str]: A dictionary mapping service names to API keys.
-            If no keys are found, returns an empty dictionary. Currently supported keys:
-                - 'huggingface': The Hugging Face API access token.
+        ApplicationSecrets
     """
-    api_key = keyring.get_password('net.illation.heather/huggingface/exploration',
-                                   'studentbane')
-    return {'huggingface': api_key} if api_key is not None else {}
+    result = ApplicationSecrets(
+        langsmith_api=keyring.get_password(service_name='net.illation.heather/langsmith', username='terran.lane@gmail.com'),
+        openai_api=keyring.get_password(service_name='net.illation.heather/openai/prototyping', username='heather'),
+        openai_project_id=keyring.get_password(service_name='net.illation.heather/openai/project_ids/wikisearch', username='heather')
+    )
+    return result
