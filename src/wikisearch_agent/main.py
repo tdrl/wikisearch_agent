@@ -7,13 +7,37 @@ from dataclasses import asdict
 import langsmith
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.messages import get_buffer_string
+from langchain_core.pydantic_v1 import BaseModel, Field
 from langchain_core.output_parsers import JsonOutputParser, JsonOutputToolsParser, StrOutputParser
 from langgraph.prebuilt import create_react_agent
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from langchain_mcp_adapters.tools import load_mcp_tools
 from pathlib import Path
+
+
+class PersonInfo(BaseModel):
+      birth_name: str = Field(description='full birth name')
+      alternate_names: list[str] = Field(description='["list", "of", "other", "names", "if", "any"]')
+      is_real: bool = Field(description='True iff this entity is real (as opposed to fictional, imaginary,'
+                                        ' a character in a book or movie, etc.)')
+      is_human: bool = Field(description='True iff this entity is a human (as opposed to, say, an animal, '
+                                         'pet, alien, monster, imaginary being, etc.)')
+      birth_year: Optional[int] = Field(description='Year of birth (if known). Use a negative value for BCE '
+                                                    'dates; positive for CE dates.')
+      date_of_birth: str = Field(description='YYYY-MM-DD [BCE|CE]')
+      assigned_gender_at_birth: str = Field(description='Entitie''s gender, as assigned at birth. '
+                                                        'Possible values: Male|Female|Nonbinary|Two spirit|Other|Unknown')
+      gender_identity: str = Field(description='Entitie''s self-identified gender identity. May or '
+                                               'may not be the same as their assigned gender at birth. Possible values: '
+                                               'Male|Female|Nonbinary|Two spirit|Other|Unknown')
+      continent_of_origin: str = Field(description='The continent or island on which they were born. '
+                                                   'Possible values: Africa|Asia|Australia|Europe|South America|North '
+                                                   'America|Antarctica|Island name')
+      country_of_origin: str = Field(description='The country in which they were born (if any), as that '
+                                                 'country was known at the time of their birth. Country '
+                                                 'name, or null')
+      locality_of_origin: str = Field(description='City or town or village name, or null')
 
 
 class App:
@@ -50,14 +74,14 @@ class App:
                         self.logger.debug('MCP session initialized')
                         tools = await load_mcp_tools(w_session)
                         self.logger.debug('Got tools', tools=tools)
+                        name_data_parser = JsonOutputParser(pydantic_object=PersonInfo)
                         context = {
-                            'person': 'Mark Twain'
+                            'person': 'Mark Twain',
+                            'format_instructions': name_data_parser.get_format_instructions(),
                         }
                         name_agent_prompt_templ = prompt_template_from_file(Path(__file__).parent.parent.parent / 'prompts/name_extractor_agent.yaml')
-                        # chain = prompt | self.llm.bind_tools(tools=tools) | JsonOutputParser()
-                        # response = await chain.ainvoke(context)
                         agent = create_react_agent(model=self.llm, tools=tools)
-                        chain = name_agent_prompt_templ | agent
+                        chain = name_agent_prompt_templ | agent | name_data_parser
                         response = await chain.ainvoke(context)
                         self.logger.info('OpenAI query', response=response['messages'][-1].content)
         except Exception as e:
