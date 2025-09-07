@@ -6,14 +6,14 @@ from wikisearch_agent.util import fetch_api_keys, setup_logging, prompt_template
 from dataclasses import asdict
 import langsmith
 from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.pydantic_v1 import BaseModel, Field
+from langchain import BaseModel, Field
 from langchain_core.output_parsers import JsonOutputParser, JsonOutputToolsParser, StrOutputParser
 from langgraph.prebuilt import create_react_agent
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from langchain_mcp_adapters.tools import load_mcp_tools
 from pathlib import Path
+import json
 
 
 class PersonInfo(BaseModel):
@@ -81,9 +81,12 @@ class App:
                         }
                         name_agent_prompt_templ = prompt_template_from_file(Path(__file__).parent.parent.parent / 'prompts/name_extractor_agent.yaml')
                         agent = create_react_agent(model=self.llm, tools=tools)
-                        chain = name_agent_prompt_templ | agent | name_data_parser
+                        chain = name_agent_prompt_templ | agent
                         response = await chain.ainvoke(context)
-                        self.logger.info('OpenAI query', response=response['messages'][-1].content)
+                        structured_response = name_data_parser.parse(response['messages'][-1].content)
+                        self.logger.info('Agent final state', response=response['messages'][-1].content)
+                        self.logger.info('JSON result', structured_response=structured_response)
+                        Path('/tmp/heather/agent_out.json').write_text(json.dumps(structured_response, indent=2))
         except Exception as e:
             self.logger.exception('Uncaught error somewhere in the code (hopeless).', exc_info=e)
             raise
