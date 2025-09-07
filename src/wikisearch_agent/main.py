@@ -6,7 +6,9 @@ from wikisearch_agent.util import fetch_api_keys, setup_logging, prompt_template
 from dataclasses import asdict
 import langsmith
 from langchain_openai import ChatOpenAI
-from langchain import BaseModel, Field
+from pydantic import BaseModel, Field
+from langchain_core.runnables.base import Runnable
+from langchain_core.tools.base import BaseTool
 from langchain_core.output_parsers import JsonOutputParser, JsonOutputToolsParser, StrOutputParser
 from langgraph.prebuilt import create_react_agent
 from mcp import ClientSession, StdioServerParameters
@@ -63,6 +65,13 @@ class App:
             cwd='/tmp/'
         )
 
+    def build_entity_analyzer_agent(self, tools: list[BaseTool]) -> tuple[Runnable, JsonOutputParser]:
+        name_data_parser = JsonOutputParser(pydantic_object=PersonInfo)
+        name_agent_prompt_templ = prompt_template_from_file(Path(__file__).parent.parent.parent / 'prompts/name_extractor_agent.yaml')
+        agent = create_react_agent(model=self.llm, tools=tools)
+        chain = name_agent_prompt_templ | agent
+        return chain, name_data_parser
+
     async def run(self):
         try:
             with langsmith.tracing_context(project_name='hrl/wikisearch', enabled=True, client=self.tracing_client):
@@ -72,17 +81,14 @@ class App:
                         self.logger.debug('Initilializing MCP server sessions')
                         await w_session.initialize()
                         self.logger.debug('MCP session initialized')
-                        tools = await load_mcp_tools(w_session)
-                        self.logger.debug('Got tools', tools=tools)
-                        name_data_parser = JsonOutputParser(pydantic_object=PersonInfo)
+                        wikipedia_tools = await load_mcp_tools(w_session)
+                        self.logger.debug('Got tools', tools=wikipedia_tools)
+                        entity_research_agent, name_data_parser = self.build_entity_analyzer_agent(tools=wikipedia_tools)
                         context = {
                             'person': 'Mark Twain',
                             'format_instructions': name_data_parser.get_format_instructions(),
                         }
-                        name_agent_prompt_templ = prompt_template_from_file(Path(__file__).parent.parent.parent / 'prompts/name_extractor_agent.yaml')
-                        agent = create_react_agent(model=self.llm, tools=tools)
-                        chain = name_agent_prompt_templ | agent
-                        response = await chain.ainvoke(context)
+                        response = await entity_research_agent.ainvoke(context)
                         structured_response = name_data_parser.parse(response['messages'][-1].content)
                         self.logger.info('Agent final state', response=response['messages'][-1].content)
                         self.logger.info('JSON result', structured_response=structured_response)

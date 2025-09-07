@@ -8,26 +8,3 @@
   - |-
     Find the following information about the person "{person}" on Wikipedia:
     {format_instructions}
-# - Their full given, or birth, name.
-# - A list (possibly empty) of any alternate names such as nicknames, pen names, nommes de guerre, aliases, etc.
-# - Whether they are real (e.g., a living or deceased historical person) or fictional (e.g., a book or movie character).
-# - Their date of birth (at whatever resolution is available). Be sure to clarify whether the date of birth is Before Common Era (BCE) or Common Era (CE), if you can determine it.
-# - Their assigned gender at birth.
-# - Their gender identity as of the date of the Wikipedia article.
-# - The continent or island on which they were born.
-# -
-# - The town, city, or other locality in which they were born (if any).
-# If any of these fields isn't available, just return null value for it. Do not return any information
-# other than the above.
-# Return your answer in JSON according to this format:
-# {{
-#   "birth_name": "full birth name",
-#   "alternate_names": ["list", "of", "other", "names", "if", "any"],
-#   "reality_status": "Real|Fictional",
-#   "date_of_birth": "YYYY-MM-DD [BCE|CE]",
-#   "assigned_gender_at_birth": "Male|Female|Nonbinary|Two spirit|Other|Unknown",
-#   "gender_identity": "Male|Female|Nonbinary|Two spirit|Other|Unknown",
-#   "continent_of_origin": "Africa|Asia|Australia|Europe|South America|North America|Antarctica|Island name",
-#   "country_of_origin": "Country name, or null",
-#   "locality_of_origin": "City or town or village name, or null"
-# }}
