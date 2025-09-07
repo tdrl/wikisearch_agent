@@ -9,6 +9,8 @@ import os
 import sys
 from dataclasses import dataclass
 from typing import Optional
+from langchain_core.prompts import ChatPromptTemplate
+import yaml
 
 
 __all__ = [
@@ -120,3 +122,25 @@ def fetch_api_keys() -> ApplicationSecrets:
         openai_project_id=keyring.get_password(service_name='net.illation.heather/openai/project_ids/wikisearch', username='heather')
     )
     return result
+
+def prompt_template_from_file(file: Path) -> ChatPromptTemplate:
+    """Load a set of messages from a YAML file and convert them to a PromptTemplate.
+
+    This loads a YAML file containing a sequence of role-typed prompt messages
+    and emits them as a Langchain PromptTemplate. The YAML file should be structured
+    like:
+        - - role1
+          - msg1
+        - - role2
+          - msg2
+        ...
+
+    Args:
+        file (Path): Path to a YAML file containing sequence of messages.
+
+    Returns:
+        ChatPromptTemplate: Messages reformatted into a prompt template.
+    """
+    with file.open('rt') as d_in:
+        raw = yaml.safe_load(d_in)
+    return ChatPromptTemplate([(role, msg) for role, msg in raw])

@@ -1,8 +1,11 @@
 import pytest
+from pathlib import Path
 
 from wikisearch_agent.util import (
        setup_logging,
+       prompt_template_from_file,
 )
+
 
 class TestUtil:
 
@@ -41,3 +44,18 @@ class TestUtil:
         captured = capsys.readouterr()
         assert 'Debug message to stderr' in captured.err
         assert 'Info message to stderr' in captured.err
+
+    def test_prompt_template_from_file_sequences(self, tmp_path: Path):
+        msg_file = (tmp_path / 'msg_sequences.yaml')
+        msg_file.write_text("""---
+- - system
+  - this is the sys message {sys_content}
+- - user
+  - this is the user message {user_content}""")
+        templ = prompt_template_from_file(msg_file)
+        result = templ.format(**{
+            'sys_content': 'Frobnicate',
+            'user_content': 'Explurshious',
+        })
+        assert 'this is the sys message Frobnicate' in result
+        assert 'this is the user message Explurshious' in result
