@@ -19,15 +19,21 @@ import json
 
 
 class PersonInfo(BaseModel):
-      birth_name: str = Field(description='full birth name')
-      alternate_names: list[str] = Field(description='["list", "of", "other", "names", "if", "any"]')
+      """Information about a single person-entity."""
+      birth_name: str = Field(description='Full birth name')
+      best_known_as: str = Field(description='Name by which this person is most widely known')
+      alternate_names: list[str] = Field(description='List of other or alternate names, such as aliases, '
+                                                     'pen names, noms de guerre, nicknames, etc.')
+      best_known_for: str = Field(description='A one sentence description of why this person is '
+                                              'noteworthy what they are known for')
       is_real: bool = Field(description='True iff this entity is real (as opposed to fictional, imaginary,'
                                         ' a character in a book or movie, etc.)')
       is_human: bool = Field(description='True iff this entity is a human (as opposed to, say, an animal, '
                                          'pet, alien, monster, imaginary being, etc.)')
       birth_year: Optional[int] = Field(description='Year of birth (if known). Use a negative value for BCE '
                                                     'dates; positive for CE dates.')
-      date_of_birth: str = Field(description='YYYY-MM-DD [BCE|CE]')
+      birth_month: Optional[int] = Field(description='Month of birth (if known), starting with January = 1 through December = 12.')
+      birth_day: Optional[int] = Field(description='Day of birth, within month, in the range [1, 31].')
       assigned_gender_at_birth: str = Field(description='Entitie''s gender, as assigned at birth. '
                                                         'Possible values: Male|Female|Nonbinary|Two spirit|Other|Unknown')
       gender_identity: str = Field(description='Entitie''s self-identified gender identity. May or '
@@ -85,10 +91,12 @@ class App:
                         self.logger.debug('Got tools', tools=wikipedia_tools)
                         entity_research_agent, name_data_parser = self.build_entity_analyzer_agent(tools=wikipedia_tools)
                         context = {
-                            'person': 'Mark Twain',
+                            # 'person': 'Mark Twain',
+                            'person': 'Jane Doe',
                             'format_instructions': name_data_parser.get_format_instructions(),
                         }
                         response = await entity_research_agent.ainvoke(context)
+                        self.logger.info('Got chain response', type=type(response), keys=list(response.keys()))
                         structured_response = name_data_parser.parse(response['messages'][-1].content)
                         self.logger.info('Agent final state', response=response['messages'][-1].content)
                         self.logger.info('JSON result', structured_response=structured_response)
