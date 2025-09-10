@@ -24,7 +24,7 @@ dependencies = [
 ]
 
 [project.scripts]
-wikisearch-agent = "wikisearch_agent:main"
+name-finder = "wikisearch_agent.name_finder:main"
 
 [build-system]
 requires = ["hatchling"]

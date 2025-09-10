@@ -108,9 +108,17 @@ class App:
             self.logger.exception('Uncaught error somewhere in the code (hopeless).', exc_info=e)
             raise
 
-async def main():
-    app = App()
-    await app.run()
+
+async def amain():
+    """Asynchronous program entry point."""
+    await App().run()
+
+
+def main():
+    """Synchronous program entry point."""
+    asyncio.run(main=amain())
+
 
 if __name__ == '__main__':
-    asyncio.run(main=main())
+    """Command-line direct invocation entry point."""
+    main()
