@@ -67,14 +67,17 @@ class App:
         self.llm = ChatOpenAI(model='gpt-5-mini', api_key=self.secrets.openai_api) # type: ignore
         self.w_mcp_sever_params = StdioServerParameters(
             command=str(Path(__file__).parent.parent.parent / '.venv/bin/wikipedia-mcp'),
-            args=[],
+            args=['--enable-cache'],
             cwd='/tmp/'
         )
 
     def build_entity_analyzer_agent(self, tools: list[BaseTool]) -> tuple[Runnable, JsonOutputParser]:
         name_data_parser = JsonOutputParser(pydantic_object=PersonInfo)
         name_agent_prompt_templ = prompt_template_from_file(Path(__file__).parent.parent.parent / 'prompts/name_extractor_agent.yaml')
-        agent = create_react_agent(model=self.llm, tools=tools)
+        agent = create_react_agent(model=self.llm,
+                                   tools=tools,
+                                   response_format=PersonInfo,
+                                   name='PersonResearcher')
         chain = name_agent_prompt_templ | agent
         return chain, name_data_parser
 
