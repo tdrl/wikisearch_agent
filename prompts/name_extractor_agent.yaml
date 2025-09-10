@@ -6,5 +6,5 @@
     and how Wikipedia structures information in its articles.
 - - user
   - |-
-    Find the following information about the person "{person}" on Wikipedia:
-    {format_instructions}
+    Find information about the person "{person}" on Wikipedia, as described
+    in the following JSON schema. {format_instructions}

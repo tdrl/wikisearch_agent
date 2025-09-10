@@ -13,14 +13,15 @@ import langsmith
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
 from pydantic_core import to_json
-from langchain_core.runnables.base import Runnable
+from langchain_core.runnables.base import Runnable, RunnableLambda
 from langchain_core.tools.base import BaseTool
-from langchain_core.output_parsers import JsonOutputParser, JsonOutputToolsParser, StrOutputParser
+from langchain_core.output_parsers.format_instructions import JSON_FORMAT_INSTRUCTIONS
 from langgraph.prebuilt import create_react_agent
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from langchain_mcp_adapters.tools import load_mcp_tools
 from pathlib import Path
+import json
 
 
 class PersonInfo(BaseModel):
@@ -78,15 +79,19 @@ class App:
             cwd='/tmp/'
         )
 
-    def build_entity_analyzer_agent(self, tools: list[BaseTool]) -> tuple[Runnable, JsonOutputParser]:
-        name_data_parser = JsonOutputParser(pydantic_object=PersonInfo)
+    def build_entity_analyzer_agent(self, tools: list[BaseTool]) -> Runnable:
         name_agent_prompt_templ = prompt_template_from_file(Path(__file__).parent.parent.parent / 'prompts/name_extractor_agent.yaml')
         agent = create_react_agent(model=self.llm,
                                    tools=tools,
                                    response_format=PersonInfo,
                                    name='PersonResearcher')
         chain = name_agent_prompt_templ | agent
-        return chain, name_data_parser
+        return chain
+
+    # TODO(hlane) Pick up here
+    # def build_name_locator(self, tools: list[BaseTool]) -> Runnable:
+    #     name_agent = self.build_entity_analyzer_agent(tools=tools)
+    #     chain = name_agent | RunnableLambda(lambda x: )
 
     async def run(self):
         try:
@@ -99,12 +104,12 @@ class App:
                         self.logger.debug('MCP session initialized')
                         wikipedia_tools = await load_mcp_tools(w_session)
                         self.logger.debug('Got tools', tools=wikipedia_tools)
-                        entity_research_agent, name_data_parser = self.build_entity_analyzer_agent(tools=wikipedia_tools)
+                        entity_research_agent = self.build_entity_analyzer_agent(tools=wikipedia_tools)
                         context = {
                             # 'person': 'Mark Twain',
                             # 'person': 'Jane Doe',
                             'person': 'Kitty Dukakis',
-                            'format_instructions': name_data_parser.get_format_instructions(),
+                            'format_instructions': JSON_FORMAT_INSTRUCTIONS.format(schema=json.dumps(PersonInfo.model_json_schema())),
                         }
                         response = await entity_research_agent.ainvoke(context)
                         self.logger.info('Got chain response', type=type(response), keys=list(response.keys()))
