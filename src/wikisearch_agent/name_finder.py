@@ -2,11 +2,17 @@
 
 from typing import Optional
 import asyncio
-from wikisearch_agent.util import fetch_api_keys, setup_logging, prompt_template_from_file
+from wikisearch_agent.util import (
+    fetch_api_keys,
+    setup_logging,
+    prompt_template_from_file,
+    get_default_working_dir
+)
 from dataclasses import asdict
 import langsmith
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
+from pydantic_core import to_json
 from langchain_core.runnables.base import Runnable
 from langchain_core.tools.base import BaseTool
 from langchain_core.output_parsers import JsonOutputParser, JsonOutputToolsParser, StrOutputParser
@@ -15,7 +21,6 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from langchain_mcp_adapters.tools import load_mcp_tools
 from pathlib import Path
-import json
 
 
 class PersonInfo(BaseModel):
@@ -58,6 +63,8 @@ class App:
         # TODO(heather) Handle command-line, if necessary. For the moment, assume
         # logging defaults are good.
         self.logger = setup_logging(loglevel='INFO')
+        # TODO(heather) CLI flag to specify a real output location.
+        self.work_dir = get_default_working_dir()
         self.secrets = fetch_api_keys()
         if self.secrets.openai_api is None:
             raise PermissionError("Don't have access to OpenAI API")
@@ -84,7 +91,7 @@ class App:
     async def run(self):
         try:
             with langsmith.tracing_context(project_name='hrl/wikisearch', enabled=True, client=self.tracing_client):
-                self.logger.info('Starting Wikisearch agent')
+                self.logger.info('Starting Wikisearch name finder agent')
                 async with stdio_client(self.w_mcp_sever_params) as (w_read, w_write):
                     async with ClientSession(read_stream=w_read, write_stream=w_write) as w_session:
                         self.logger.debug('Initilializing MCP server sessions')
@@ -95,15 +102,15 @@ class App:
                         entity_research_agent, name_data_parser = self.build_entity_analyzer_agent(tools=wikipedia_tools)
                         context = {
                             # 'person': 'Mark Twain',
-                            'person': 'Jane Doe',
+                            # 'person': 'Jane Doe',
+                            'person': 'Kitty Dukakis',
                             'format_instructions': name_data_parser.get_format_instructions(),
                         }
                         response = await entity_research_agent.ainvoke(context)
                         self.logger.info('Got chain response', type=type(response), keys=list(response.keys()))
-                        structured_response = name_data_parser.parse(response['messages'][-1].content)
                         self.logger.info('Agent final state', response=response['messages'][-1].content)
-                        self.logger.info('JSON result', structured_response=structured_response)
-                        Path('/tmp/heather/agent_out.json').write_text(json.dumps(structured_response, indent=2))
+                        self.logger.info('JSON result', structured_response=response['structured_response'])
+                        (self.work_dir / 'agent_out.json').write_bytes(to_json(response['structured_response'], indent=2))
         except Exception as e:
             self.logger.exception('Uncaught error somewhere in the code (hopeless).', exc_info=e)
             raise
