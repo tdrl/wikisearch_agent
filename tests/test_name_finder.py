@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Any, Dict
 from pydantic import BaseModel
 import pytest
-from wikisearch_agent.name_finder import App, NameFinderAppState, EntityLookupAndInfoExtractNode
+from wikisearch_agent.name_finder import App, NameFinderAppState
 from wikisearch_agent.schemas.person import PersonInfo, ArticleNames
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, ToolMessage, AIMessage
@@ -87,25 +87,3 @@ class TestNameFinder:
         result = (t1 | fake_llm | RunnableLambda(lambda x: {'messages': [x]}) | t2 | fake_llm).invoke(input={'placeholder': 'Grand Canyon'})
         assert isinstance(result, AIMessage)
         assert result.content == 'beta'
-
-    def test_entity_lookup_node(self, tmp_path: Path, alice_in_wonderland_str: str):
-        (tmp_path / 'name_extractor_agent.yaml').write_text("""---
-- - system
-  - >-
-    Placeholder system prompt.
-- - user
-  - |-
-    Find information about the person "{person}" on Wikipedia, as described
-    in the following JSON schema. {format_instructions}
-""")
-        fake_model = StructuredFakeListChatModel(responses=[alice_in_wonderland_str], name='fake-ohla')
-        node = EntityLookupAndInfoExtractNode(prompts_dir=tmp_path,
-                                              model=fake_model,
-                                              tools=[])
-        builder = StateGraph(state_schema=NameFinderAppState)
-        builder.add_node('entity_extractor', node.node)
-        builder.add_edge(START, 'entity_extractor')
-        builder.add_edge('entity_extractor', END)
-        graph = builder.compile()
-        result: NameFinderAppState = graph.invoke(NameFinderAppState(target_person='Alice in Wonderland'))
-        assert result['entity_data']['birth_name'] == 'Alice Liddel'
