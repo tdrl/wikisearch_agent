@@ -77,14 +77,14 @@ class App:
             'format_instructions': JSON_FORMAT_INSTRUCTIONS.format(schema=json.dumps(PersonInfo.model_json_schema())),
         })
         update = NameFinderAppState(entity_data=result['structured_response'],
-                                    messages=result['messages'])
+                                    messages=result['messages'])  # type: ignore
         return update
 
     async def build_name_locator_node(self, state: NameFinderAppState) -> NameFinderAppState:
         docs = [x.content for x in state['messages'] if isinstance(x, ToolMessage)]
-        docs = '\n'.join(docs)
+        docs = '\n'.join(docs)  # type: ignore
         result = await (self.name_locator_prompt | self.scraper).ainvoke({'all_docs': docs})
-        update = NameFinderAppState(article_name_data=result)
+        update = NameFinderAppState(article_name_data=result)  # type: ignore
         return update
 
     def build_graph(self) -> CompiledStateGraph:

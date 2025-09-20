@@ -44,7 +44,7 @@ class StructuredFakeListChatModel(FakeListChatModel):
 
     def invoke(self, input, config: RunnableConfig | None = None, *, stop: list[str] | None = None, **kwargs: Any) -> BaseMessage:
         raw = super().invoke(input, config, stop=stop, **kwargs)
-        return JsonOutputParser().parse(raw.content)
+        return JsonOutputParser().parse(raw.content)  # type: ignore
 
 
 class TestNameFinder:
