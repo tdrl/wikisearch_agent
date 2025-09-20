@@ -8,15 +8,19 @@ from wikisearch_agent.util import (
     prompt_template_from_file,
     get_default_working_dir
 )
+from wikisearch_agent.schemas.person import PersonInfo, ArticleNames
 from dataclasses import asdict
 import langsmith
 from langchain_openai import ChatOpenAI
-from pydantic import BaseModel, Field
 from pydantic_core import to_json
 from langchain_core.runnables.base import Runnable, RunnableLambda
 from langchain_core.tools.base import BaseTool
 from langchain_core.output_parsers.format_instructions import JSON_FORMAT_INSTRUCTIONS
+from langchain_core.messages import ToolMessage
 from langgraph.prebuilt import create_react_agent
+from langgraph.prebuilt.chat_agent_executor import AgentState
+from langgraph.graph import StateGraph, START, END
+from langgraph.graph.state import CompiledStateGraph
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from langchain_mcp_adapters.tools import load_mcp_tools
@@ -24,34 +28,11 @@ from pathlib import Path
 import json
 
 
-class PersonInfo(BaseModel):
-      """Information about a single person-entity."""
-      birth_name: str = Field(description='Full birth name')
-      best_known_as: str = Field(description='Name by which this person is most widely known')
-      alternate_names: list[str] = Field(description='List of other or alternate names, such as aliases, '
-                                                     'pen names, noms de guerre, nicknames, etc.')
-      best_known_for: str = Field(description='A one sentence description of why this person is '
-                                              'noteworthy what they are known for')
-      is_real: bool = Field(description='True iff this entity is real (as opposed to fictional, imaginary,'
-                                        ' a character in a book or movie, etc.)')
-      is_human: bool = Field(description='True iff this entity is a human (as opposed to, say, an animal, '
-                                         'pet, alien, monster, imaginary being, etc.)')
-      birth_year: Optional[int] = Field(description='Year of birth (if known). Use a negative value for BCE '
-                                                    'dates; positive for CE dates.')
-      birth_month: Optional[int] = Field(description='Month of birth (if known), starting with January = 1 through December = 12.')
-      birth_day: Optional[int] = Field(description='Day of birth, within month, in the range [1, 31].')
-      assigned_gender_at_birth: str = Field(description='Entitie''s gender, as assigned at birth. '
-                                                        'Possible values: Male|Female|Nonbinary|Two spirit|Other|Unknown')
-      gender_identity: str = Field(description='Entitie''s self-identified gender identity. May or '
-                                               'may not be the same as their assigned gender at birth. Possible values: '
-                                               'Male|Female|Nonbinary|Two spirit|Other|Unknown')
-      continent_of_origin: str = Field(description='The continent or island on which they were born. '
-                                                   'Possible values: Africa|Asia|Australia|Europe|South America|North '
-                                                   'America|Antarctica|Island name')
-      country_of_origin: str = Field(description='The country in which they were born (if any), as that '
-                                                 'country was known at the time of their birth. Country '
-                                                 'name, or null')
-      locality_of_origin: str = Field(description='City or town or village name, or null')
+class NameFinderAppState(AgentState):
+    """State for the NameFinder app: Detailed info about a single entity, and all co-occurring names."""
+    target_person: str | None
+    entity_data: PersonInfo | None
+    article_name_data: ArticleNames | None
 
 
 class App:
@@ -66,32 +47,56 @@ class App:
         self.logger = setup_logging(loglevel='INFO')
         # TODO(heather) CLI flag to specify a real output location.
         self.work_dir = get_default_working_dir()
+        self.prompts_dir = Path(__file__).parent.parent.parent / 'prompts'
         self.secrets = fetch_api_keys()
         if self.secrets.openai_api is None:
             raise PermissionError("Don't have access to OpenAI API")
         self.logger.debug('Fetch keys', keys=[k for k in asdict(self.secrets)])
-        self.tracing_client = langsmith.Client(api_key=self.secrets.langsmith_api)
         # TODO(heather) Consider factoring out the model name and temperature to command line args.
-        self.llm = ChatOpenAI(model='gpt-5-mini', api_key=self.secrets.openai_api) # type: ignore
+        self.reseacher = ChatOpenAI(model='gpt-5-mini', api_key=self.secrets.openai_api) # type: ignore
+        self.scraper = ChatOpenAI(model='gpt-5-nano', api_key=self.secrets.openai_api).with_structured_output(schema=ArticleNames)  # type: ignore
+        self.wikipedia_tools: list[BaseTool] = []
+        self.reseacher_prompt = prompt_template_from_file(self.prompts_dir / 'name_extractor_agent.yaml')
+        self.name_locator_prompt = prompt_template_from_file(self.prompts_dir / 'name_scraper_prompt.yaml')
+        self.tracing_client = langsmith.Client(api_key=self.secrets.langsmith_api)
         self.w_mcp_sever_params = StdioServerParameters(
             command=str(Path(__file__).parent.parent.parent / '.venv/bin/wikipedia-mcp'),
             args=['--enable-cache'],
             cwd='/tmp/'
         )
 
-    def build_entity_analyzer_agent(self, tools: list[BaseTool]) -> Runnable:
-        name_agent_prompt_templ = prompt_template_from_file(Path(__file__).parent.parent.parent / 'prompts/name_extractor_agent.yaml')
-        agent = create_react_agent(model=self.llm,
-                                   tools=tools,
+    async def build_entity_analyzer_node(self, state: NameFinderAppState) -> NameFinderAppState:
+        agent = create_react_agent(model=self.reseacher,
+                                   tools=self.wikipedia_tools,
                                    response_format=PersonInfo,
                                    name='PersonResearcher')
-        chain = name_agent_prompt_templ | agent
-        return chain
+        chain = self.reseacher_prompt | agent
+        result = await chain.ainvoke({
+            'person': state['target_person'],
+            # TODO(heather): Refactor to utility fn.
+            'format_instructions': JSON_FORMAT_INSTRUCTIONS.format(schema=json.dumps(PersonInfo.model_json_schema())),
+        })
+        update = NameFinderAppState(entity_data=result['structured_response'],
+                                    messages=result['messages'])
+        return update
 
-    # TODO(hlane) Pick up here
-    # def build_name_locator(self, tools: list[BaseTool]) -> Runnable:
-    #     name_agent = self.build_entity_analyzer_agent(tools=tools)
-    #     chain = name_agent | RunnableLambda(lambda x: )
+    async def build_name_locator_node(self, state: NameFinderAppState) -> NameFinderAppState:
+        docs = [x.content for x in state['messages'] if isinstance(x, ToolMessage)]
+        docs = '\n'.join(docs)
+        result = await (self.name_locator_prompt | self.scraper).ainvoke({'all_docs': docs})
+        update = NameFinderAppState(article_name_data=result)
+        return update
+
+    def build_graph(self) -> CompiledStateGraph:
+        builder = StateGraph(state_schema=NameFinderAppState)
+        ENTITY_RESEARCHER_NODE = 'Entity Researcher'
+        NAME_FINDER_NODE = 'Names Finder'
+        builder.add_node(ENTITY_RESEARCHER_NODE, self.build_entity_analyzer_node)
+        builder.add_edge(START, ENTITY_RESEARCHER_NODE)
+        builder.add_node(NAME_FINDER_NODE, self.build_name_locator_node)
+        builder.add_edge(ENTITY_RESEARCHER_NODE, NAME_FINDER_NODE)
+        builder.add_edge(NAME_FINDER_NODE, END)
+        return builder.compile()
 
     async def run(self):
         try:
@@ -102,20 +107,19 @@ class App:
                         self.logger.debug('Initilializing MCP server sessions')
                         await w_session.initialize()
                         self.logger.debug('MCP session initialized')
-                        wikipedia_tools = await load_mcp_tools(w_session)
-                        self.logger.debug('Got tools', tools=wikipedia_tools)
-                        entity_research_agent = self.build_entity_analyzer_agent(tools=wikipedia_tools)
-                        context = {
-                            # 'person': 'Mark Twain',
-                            # 'person': 'Jane Doe',
-                            'person': 'Kitty Dukakis',
-                            'format_instructions': JSON_FORMAT_INSTRUCTIONS.format(schema=json.dumps(PersonInfo.model_json_schema())),
-                        }
-                        response = await entity_research_agent.ainvoke(context)
-                        self.logger.info('Got chain response', type=type(response), keys=list(response.keys()))
-                        self.logger.info('Agent final state', response=response['messages'][-1].content)
-                        self.logger.info('JSON result', structured_response=response['structured_response'])
-                        (self.work_dir / 'agent_out.json').write_bytes(to_json(response['structured_response'], indent=2))
+                        self.wikipedia_tools = await load_mcp_tools(w_session)
+                        self.logger.debug('Got tools', tools=self.wikipedia_tools)
+                        graph = self.build_graph()
+                        start_state = NameFinderAppState(messages=[],
+                                                         remaining_steps=20,
+                                                         target_person='Kitty Dukakis',
+                                                         entity_data=None,
+                                                         article_name_data=None)
+                        result = await graph.ainvoke(start_state)
+                        self.logger.info('Got chain response', type=type(result), keys=list(result.keys()))
+                        self.logger.info('Agent final state', result=result['messages'][-1].content)
+                        self.logger.info('JSON entity result', structured_response=result['entity_data'])
+                        (self.work_dir / 'agent_out.json').write_bytes(to_json(result, indent=2))
         except Exception as e:
             self.logger.exception('Uncaught error somewhere in the code (hopeless).', exc_info=e)
             raise
