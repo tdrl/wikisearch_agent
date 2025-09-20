@@ -73,7 +73,7 @@ class App:
         chain = self.reseacher_prompt | agent
         result = await chain.ainvoke({
             'person': state['target_person'],
-            # TODO(heather): Refactor to utility fn.
+            # TODO(heather): There has to be a better way to handle this.
             'format_instructions': JSON_FORMAT_INSTRUCTIONS.format(schema=json.dumps(PersonInfo.model_json_schema())),
         })
         update = NameFinderAppState(entity_data=result['structured_response'],
