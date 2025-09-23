@@ -43,16 +43,16 @@ class WikipediaShell(cmd.Cmd):
             }
 
             # Print available commands
-            console.print("\nAvailable commands:", style="bold green")
+            console.print('\nAvailable commands:', style='bold green')
             for name, tool in self.tools.items():
-                console.print(f"  {name}: {tool.description}")
+                console.print(f'  {name}: {tool.description}')
             console.print()
 
         except Exception as e:
-            console.print(f"[red]Error initializing session: {str(e)}[/red]")
+            console.print(f'[red]Error initializing session: {str(e)}[/red]')
             raise
 
-    def do_quit(self, arg: str) -> bool:
+    def do_quit(self, _: str) -> bool:
         """Exit the shell."""
         return True
 
@@ -64,7 +64,7 @@ class WikipediaShell(cmd.Cmd):
 
         tool_name = cmd_parts[0].lower()
         if tool_name not in self.tools:
-            console.print(f"[red]Unknown command: {tool_name}[/red]")
+            console.print(f'[red]Unknown command: {tool_name}[/red]')
             return
 
         # Parse arguments as JSON
@@ -72,7 +72,7 @@ class WikipediaShell(cmd.Cmd):
         try:
             args = json.loads(args_str) if args_str else {}
         except json.JSONDecodeError:
-            console.print("[red]Error: Arguments must be valid JSON[/red]")
+            console.print('[red]Error: Arguments must be valid JSON[/red]')
             return
 
         # Execute the tool
@@ -81,7 +81,7 @@ class WikipediaShell(cmd.Cmd):
     async def _execute_tool(self, tool_name: str, args: Dict[str, Any]) -> None:
         """Execute a tool and display its results."""
         if not self.session:
-            console.print("[red]Error: Session not initialized[/red]")
+            console.print('[red]Error: Session not initialized[/red]')
             return
 
         try:
@@ -90,37 +90,37 @@ class WikipediaShell(cmd.Cmd):
             # Pretty print the result
             if isinstance(result, (dict, list)):
                 json_str = json.dumps(result, indent=2)
-                syntax = Syntax(json_str, "json", theme="monokai")
+                syntax = Syntax(json_str, 'json', theme='monokai')
                 console.print(syntax)
             else:
                 console.print(str(result))
 
         except Exception as e:
-            console.print(f"[red]Error executing {tool_name}: {str(e)}[/red]")
+            console.print(f'[red]Error executing {tool_name}: {str(e)}[/red]')
 
     def do_help(self, arg: str) -> None:
         """List available commands or get help for a specific command."""
         if not arg:
-            console.print("\nAvailable commands:", style="bold green")
-            console.print("  quit: Exit the shell")
-            console.print("  help: Show this help message")
+            console.print('\nAvailable commands:', style='bold green')
+            console.print('  quit: Exit the shell')
+            console.print('  help: Show this help message')
             for name, tool in self.tools.items():
-                console.print(f"  {name}: {tool.description}")
+                console.print(f'  {name}: {tool.description}')
         else:
             if arg.lower() in self.tools:
                 tool = self.tools[arg.lower()]
-                console.print(f"\n{arg}:", style="bold green")
-                console.print(f"Description: {tool.description}")
+                console.print(f'\n{arg}:', style='bold green')
+                console.print(f'Description: {tool.description}')
                 if tool.parameters:
-                    console.print("Parameters:")
+                    console.print('Parameters:')
                     syntax = Syntax(
                         json.dumps(tool.parameters, indent=2),
-                        "json",
-                        theme="monokai"
+                        'json',
+                        theme='monokai'
                     )
                     console.print(syntax)
             else:
-                console.print(f"[red]No help available for: {arg}[/red]")
+                console.print(f'[red]No help available for: {arg}[/red]')
 
 def main():
     """Main entry point for the Wikipedia shell."""
@@ -131,7 +131,7 @@ def main():
         # Start the REPL
         shell.cmdloop()
     except KeyboardInterrupt:
-        console.print("\nGoodbye!")
+        console.print('\nGoodbye!')
     finally:
         if shell.session is not None:
             asyncio.run(shell.session.aclose())
