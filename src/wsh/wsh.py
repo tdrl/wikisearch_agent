@@ -9,7 +9,7 @@ from pathlib import Path
 from rich.console import Console
 from rich.syntax import Syntax
 from langchain_mcp_adapters.tools import load_mcp_tools
-from mcp import StdioServerParameters
+from mcp import StdioServerParameters, ClientSession
 from mcp.client.stdio import stdio_client
 from wikisearch_agent.util import fetch_api_keys, setup_logging
 
@@ -27,26 +27,28 @@ class WikipediaShell(cmd.Cmd):
         self.tools: Dict[str, Any] = {}
         self.client: Any = None
         self.process: subprocess.Popen | None = None
+        self.w_mcp_sever_params = StdioServerParameters(
+            command=str(Path(__file__).parent.parent.parent / '.venv/bin/wikipedia-mcp'),
+            args=['--enable-cache'],
+            cwd='/tmp/'
+        )
 
     async def init_session(self):
         """Initialize the MCP session and discover available tools."""
         try:
-            params = StdioServerParameters(command='python -m wikipedia_mcp.server')
-            # Create and initialize the MCP client
-            async with stdio_client(params) as client:
-                self.client = client
+            async with stdio_client(self.w_mcp_sever_params) as (w_read, w_write):
+                async with ClientSession(read_stream=w_read, write_stream=w_write) as w_session:
+                    await w_session.initialize()
+                    tools = await load_mcp_tools(w_session)
+                    self.tools = {
+                        tool.name: tool for tool in tools
+                    }
 
-            # Load the tools
-            tools = await load_mcp_tools(self.client)
-            self.tools = {
-                tool.name: tool for tool in tools
-            }
-
-            # Print available commands
-            console.print('\nAvailable commands:', style='bold green')
-            for name, tool in self.tools.items():
-                console.print(f'  {name}: {tool.description}')
-            console.print()
+                    # Print available commands
+                    console.print('\nAvailable commands:', style='bold green')
+                    for name, tool in self.tools.items():
+                        console.print(f'  {name}: {tool.description}')
+                    console.print()
 
         except Exception as e:
             console.print(f'[red]Error initializing session: {str(e)}[/red]')
