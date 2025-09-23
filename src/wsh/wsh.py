@@ -4,10 +4,12 @@ import asyncio
 from typing import Any, Dict, List
 import cmd
 import json
+import subprocess
 from pathlib import Path
 from rich.console import Console
 from rich.syntax import Syntax
-from mcp import ClientSession, StdioServerParameters
+from langchain_mcp_adapters.tools import load_mcp_tools
+from mcp import StdioServerParameters
 from mcp.client.stdio import stdio_client
 from wikisearch_agent.util import fetch_api_keys, setup_logging
 
@@ -23,23 +25,21 @@ class WikipediaShell(cmd.Cmd):
         super().__init__()
         self.logger = setup_logging(loglevel='INFO')
         self.tools: Dict[str, Any] = {}
-        self.session: ClientSession | None = None
+        self.client: Any = None
+        self.process: subprocess.Popen | None = None
 
     async def init_session(self):
         """Initialize the MCP session and discover available tools."""
         try:
-            # Set up the MCP client session
-            server_params = StdioServerParameters([
-                'python', '-m', 'wikipedia_mcp.server'
-            ])
+            params = StdioServerParameters(command='python -m wikipedia_mcp.server')
+            # Create and initialize the MCP client
+            async with stdio_client(params) as client:
+                self.client = client
 
-            # Start the MCP session
-            self.session = await stdio_client(server_params)
-
-            # Discover available tools
-            tools_response = await self.session.discover_tools()
+            # Load the tools
+            tools = await load_mcp_tools(self.client)
             self.tools = {
-                tool.name: tool for tool in tools_response.tools
+                tool.name: tool for tool in tools
             }
 
             # Print available commands
@@ -50,6 +50,8 @@ class WikipediaShell(cmd.Cmd):
 
         except Exception as e:
             console.print(f'[red]Error initializing session: {str(e)}[/red]')
+            if self.process:
+                self.process.terminate()
             raise
 
     def do_quit(self, _: str) -> bool:
@@ -80,12 +82,17 @@ class WikipediaShell(cmd.Cmd):
 
     async def _execute_tool(self, tool_name: str, args: Dict[str, Any]) -> None:
         """Execute a tool and display its results."""
-        if not self.session:
+        if not self.client:
             console.print('[red]Error: Session not initialized[/red]')
             return
 
+        if tool_name not in self.tools:
+            console.print(f'[red]Unknown tool: {tool_name}[/red]')
+            return
+
         try:
-            result = await self.session.invoke_tool(tool_name, args)
+            tool = self.tools[tool_name]
+            result = await tool.invoke(args)
 
             # Pretty print the result
             if isinstance(result, (dict, list)):
@@ -132,9 +139,12 @@ def main():
         shell.cmdloop()
     except KeyboardInterrupt:
         console.print('\nGoodbye!')
+    except Exception as e:
+        console.print(f'[red]Error: {str(e)}[/red]')
     finally:
-        if shell.session is not None:
-            asyncio.run(shell.session.aclose())
+        if shell.client:
+            # The client's context manager will handle cleanup
+            pass
 
 if __name__ == '__main__':
     main()
