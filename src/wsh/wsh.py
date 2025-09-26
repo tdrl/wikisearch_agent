@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 from rich.console import Console
 from rich.syntax import Syntax
-from langchain_mcp_adapters.tools import load_mcp_tools
+from langchain_mcp_adapters.tools import load_mcp_tools, ToolException
 from mcp import StdioServerParameters, ClientSession
 from mcp.client.stdio import stdio_client
 from wikisearch_agent.util import fetch_api_keys, setup_logging
@@ -170,9 +170,12 @@ class WikipediaShell(cmd.Cmd):
 
         try:
             tool = self.tools[tool_name]
-            console.print(f'Entering {tool_name} => {tool.description}')
-            result = await tool.ainvoke(args)
-            console.print(f'Completed tool {tool_name}')
+            try:
+                result = await tool.ainvoke(args)
+            except ToolException as e:
+                console.print(f'[red]Error executing tool {tool_name}')
+                console.print_exception(max_frames=3, word_wrap=True)
+                return
 
             # Pretty print the result
             if isinstance(result, (dict, list)):
@@ -183,7 +186,7 @@ class WikipediaShell(cmd.Cmd):
                 console.print(str(result))
 
         except Exception as e:
-            console.print(f'[red]Error executing {tool_name}[/red]')
+            console.print(f'[red]Error while trying to {tool_name} - network maybe?[/red]')
             console.print_exception()
 
     def do_help(self, arg: str) -> None:
@@ -211,6 +214,9 @@ class WikipediaShell(cmd.Cmd):
                     console.print_json(json.dumps(tool.args), indent=2)
             else:
                 console.print(f'[red]No help available for: {arg}[/red]')
+
+    def emptyline(self) -> bool:
+        return False
 
 AsyncWikipediaShell = type('AsyncWikipediaShell', (WikipediaShell,),
                            {
