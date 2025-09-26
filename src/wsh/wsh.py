@@ -1,9 +1,10 @@
 """Interactive shell for wikipedia-mcp server tools."""
 
 import asyncio
-from typing import Any, Dict, List
+from typing import Any, Dict
 import cmd
 import json
+from dataclasses import asdict
 
 from pathlib import Path
 from rich.console import Console
@@ -93,9 +94,13 @@ class WikipediaShell(cmd.Cmd):
         self.logger = setup_logging(loglevel='INFO')
         self.tools: Dict[str, Any] = {}
         self.client: Any = None
+        secrets = fetch_api_keys()
         self.w_mcp_sever_params = StdioServerParameters(
             command=str(Path(__file__).parent.parent.parent / '.venv/bin/wikipedia-mcp'),
-            args=['--enable-cache'],
+            args=[
+                    '--enable-cache',
+                    '--access-token', secrets.wikimedia_access_token if secrets.wikimedia_access_token is not None else '',
+                ],
             cwd='/tmp/'
         )
         self.w_session = ClientSession | None  # Wikipedia MCP server session.
@@ -180,10 +185,9 @@ class WikipediaShell(cmd.Cmd):
             # Pretty print the result
             if isinstance(result, (dict, list)):
                 json_str = json.dumps(result, indent=2)
-                syntax = Syntax(json_str, 'json', theme='monokai')
-                console.print(syntax)
+                console.print_json(json_str)
             else:
-                console.print(str(result))
+                console.print_json(str(result))
 
         except Exception as e:
             console.print(f'[red]Error while trying to {tool_name} - network maybe?[/red]')

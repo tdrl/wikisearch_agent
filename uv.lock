@@ -2596,7 +2596,7 @@ sdist = { url = "https://files.pythonhosted.org/packages/b9/aa/2e35be124dfc7e581
 
 [[package]]
 name = "wikipedia-mcp"
-version = "1.5.8"
+version = "1.6.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "fastmcp" },
@@ -2604,9 +2604,9 @@ dependencies = [
     { name = "requests" },
     { name = "wikipedia-api" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/46/f6/40359c79b47e599b2cd79a44d23d975ce2ae9d747b0ce3d911befdf106dd/wikipedia_mcp-1.5.8.tar.gz", hash = "sha256:2f86eefd15ab218c7914c0cefd983cefa11b830a0c6f45dc9500bda0461062a9", size = 41692 }
+sdist = { url = "https://files.pythonhosted.org/packages/42/32/4575844b4342a04c36eaf416a09933fca00f4f7c52e7b0a63e79f1a59b2e/wikipedia_mcp-1.6.0.tar.gz", hash = "sha256:94b9ebeb9ad814877334cd6f5a969ed063e56068d463025e736059d3b80e4fd5", size = 44581 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5f/be/b8f7abf9a9dd65cd411a4a6cecd104fd7296e4e6923fc74459417ce7f0e8/wikipedia_mcp-1.5.8-py3-none-any.whl", hash = "sha256:4924cffa338fc98271c63569e25b8cc7176a862247d83d8b677e9282aa8bfb9f", size = 20415 },
+    { url = "https://files.pythonhosted.org/packages/34/55/df7a2b5e66006e3c97c8e4e06a3b87d0c293bcfac0f7ed8865e3eb086cd0/wikipedia_mcp-1.6.0-py3-none-any.whl", hash = "sha256:f66b94a5be3afa8d913e7b9afb02f098ad52d92cb0f4a0c1e760ac884bc105a8", size = 21005 },
 ]
 
 [[package]]

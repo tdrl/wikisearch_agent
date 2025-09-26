@@ -105,6 +105,7 @@ class ApplicationSecrets:
     langsmith_api: Optional[str] = None
     openai_api: Optional[str] = None
     openai_project_id: Optional[str] = None
+    wikimedia_access_token: Optional[str] = None
 
 
 def fetch_api_keys() -> ApplicationSecrets:
@@ -119,7 +120,8 @@ def fetch_api_keys() -> ApplicationSecrets:
     result = ApplicationSecrets(
         langsmith_api=keyring.get_password(service_name='net.illation.heather/langsmith', username='terran.lane@gmail.com'),
         openai_api=keyring.get_password(service_name='net.illation.heather/openai/prototyping', username='heather'),
-        openai_project_id=keyring.get_password(service_name='net.illation.heather/openai/project_ids/wikisearch', username='heather')
+        openai_project_id=keyring.get_password(service_name='net.illation.heather/openai/project_ids/wikisearch', username='heather'),
+        wikimedia_access_token=keyring.get_password('net.illation.heather/wikimedia/access_token/AgenticWikisearch', username='Lady Dataslayer')
     )
     return result
 
