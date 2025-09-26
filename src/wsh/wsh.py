@@ -16,6 +16,72 @@ from asyncio import AbstractEventLoop
 
 console = Console()
 
+# An async-aware "replacement" cmdloop. We're going to use this to patch
+# the existing Cmd class to be able to handle async commands. Ugh.
+# This pattern lifted from:
+#   https://stackoverflow.com/questions/54425723/using-a-coroutine-for-pythons-cmd-class-input-stream
+# Though there they wanted an async readline; we want an async onecmd().
+async def adapter_cmdloop(self, intro=None):
+    """Repeatedly issue a prompt, accept input, parse an initial prefix
+    off the received input, and dispatch to action methods, passing them
+    the remainder of the line as argument.
+
+    """
+    self.preloop()
+
+    #This is the same code as the Python 3.7.2 Cmd class, with the
+    #following changes
+    #  - Remove dead code caused by forcing use_rawinput=False.
+    #  - Added a readline in front of readline()
+    if intro is not None:
+        self.intro = intro
+    if self.intro:
+        self.stdout.write(str(self.intro)+"\n")
+    stop = None
+    while not stop:
+        if self.cmdqueue:
+            line = self.cmdqueue.pop(0)
+        else:
+            self.stdout.write(self.prompt)
+            self.stdout.flush()
+            line = self.stdin.readline()
+            if not len(line):
+                line = 'EOF'
+            else:
+                line = line.rstrip('\r\n')
+        line = self.precmd(line)
+        stop = await self.onecmd(line)
+        stop = self.postcmd(stop, line)
+    self.postloop()
+
+# Ditto - a monkey patch for Cmd.onecmd()
+async def adapter_onecmd(self, line):
+    """Interpret the argument as though it had been typed in response
+    to the prompt.
+
+    This may be overridden, but should not normally need to be;
+    see the precmd() and postcmd() methods for useful execution hooks.
+    The return value is a flag indicating whether interpretation of
+    commands by the interpreter should stop.
+
+    """
+    cmd, arg, line = self.parseline(line)
+    if not line:
+        return self.emptyline()
+    if cmd is None:
+        return await self.default(line)
+    self.lastcmd = line
+    if line == 'EOF' :
+        self.lastcmd = ''
+    if cmd == '':
+        return await self.default(line)
+    else:
+        func = getattr(self, 'do_' + cmd, None)
+        if func is None:
+            return await self.default(line)
+        return func(arg)
+
+
 class WikipediaShell(cmd.Cmd):
     """Interactive shell for wikipedia-mcp tools."""
 
@@ -32,7 +98,6 @@ class WikipediaShell(cmd.Cmd):
             args=['--enable-cache'],
             cwd='/tmp/'
         )
-        self.loop: AbstractEventLoop | None = None
         self.w_session = ClientSession | None  # Wikipedia MCP server session.
 
     async def do_session(self):
@@ -46,7 +111,6 @@ class WikipediaShell(cmd.Cmd):
                     self.tools = {
                         tool.name: tool for tool in tools
                     }
-                    self.loop = asyncio.get_running_loop()
 
                     # Print available commands
                     console.print('\nAvailable commands:', style='bold green')
@@ -54,15 +118,11 @@ class WikipediaShell(cmd.Cmd):
                         console.print(f'  {name}: {tool.description}')
                     console.print()
                     # Start the REPL
-                    self.cmdloop()
-                    console.print('Command loop terminated')
-                console.print('Left ClientSession block')
-            console.print('Left stdio_client block')
+                    await self.cmdloop()
         except Exception as e:
             console.print(f'[red]Error during session initialization or execution:[/red]')
             console.print_exception()
             raise
-        console.print('Finshed do_session')
 
     def do_quit(self, _: str) -> bool:
         """Exit the shell."""
@@ -76,7 +136,7 @@ class WikipediaShell(cmd.Cmd):
         files = [str(f) for f in Path('.').glob('*')]
         self.columnize(files)
 
-    def default(self, line: str) -> None:
+    async def default(self, line: str):
         """Handle tool execution for unknown commands."""
         cmd_parts = line.split(maxsplit=1)
         if not cmd_parts:
@@ -96,14 +156,9 @@ class WikipediaShell(cmd.Cmd):
             return
 
         # Execute the tool
-        if self.loop is None:
-            console.print('[red]Error![/red] Event loop not running. This is a core bug.')
-        else:
-            self._execute_tool(tool_name=tool_name, args=args)
-            # future = self.loop.create_task(self._execute_tool(tool_name, args))
-            # self.loop.run_until_complete(future=future)
+        await self._execute_tool(tool_name=tool_name, args=args)
 
-    def _execute_tool(self, tool_name: str, args: Dict[str, Any]) -> None:
+    async def _execute_tool(self, tool_name: str, args: Dict[str, Any]) -> None:
         """Execute a tool and display its results."""
         if self.w_session is None:
             console.print('[red]Error: Session not initialized[/red]')
@@ -116,7 +171,7 @@ class WikipediaShell(cmd.Cmd):
         try:
             tool = self.tools[tool_name]
             console.print(f'Entering {tool_name} => {tool.description}')
-            result = tool.ainvoke(args)
+            result = await tool.ainvoke(args)
             console.print(f'Completed tool {tool_name}')
 
             # Pretty print the result
@@ -157,9 +212,15 @@ class WikipediaShell(cmd.Cmd):
             else:
                 console.print(f'[red]No help available for: {arg}[/red]')
 
+AsyncWikipediaShell = type('AsyncWikipediaShell', (WikipediaShell,),
+                           {
+                               'cmdloop': adapter_cmdloop,
+                               'onecmd': adapter_onecmd,
+                           })
+
 def main():
     """Main entry point for the Wikipedia shell."""
-    shell = WikipediaShell()
+    shell = AsyncWikipediaShell()
     try:
         # Initialize the session
         asyncio.run(shell.do_session())
